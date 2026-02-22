@@ -305,6 +305,34 @@ master_clean |>
 
 Mx products predominately show successes in Japan and the Americas, with lower presence in EMEA and APAC/Oceania markets. 
 
+# Scatter Plot of Qx and Mx Conversion
+```{r Qx v.s. Mx Conversion by Industry}
+# Conversion
+conv_compare <- QAL_Perform_clean |>
+  filter(solution_rollup %in% c("Mx", "Qx")) |>
+  group_by(solution_rollup, `acct target industry`) |>
+  summarise(
+    conv_rate = mean(converted, na.rm = TRUE),
+    n_leads = n(),
+    .groups = "drop"
+  ) |>
+  select(solution_rollup, `acct target industry`, conv_rate) |>
+  pivot_wider(
+    names_from = solution_rollup,
+    values_from = conv_rate)
+
+# Scatterplot
+ggplot(conv_compare, aes(x = Qx, y = Mx)) +
+  geom_point() +
+  geom_abline(slope = 1, intercept = 0, linetype = "dashed") +
+  geom_text(aes(label = `acct target industry`),
+            hjust = 0, nudge_x = 0.005, size = 3) +
+  labs(
+    title = "Industry Conversion: Qx vs Mx",
+    x = "Qx Conversion Rate",
+    y = "Mx Conversion Rate")
+```
+
 # Results
 
 Our findings show that Mx product successes are most often achieved when the contact lead titles are at the executive or manager level within medical device manufacturing and active pharma site functions. The target industries for these customers are pharma and biotech, non-life science, and medical devices. Mx's success rates are pretty stagnant in 2024 and 2025, with slightly lower performance in 2025. Lastly, the Mx product is most successful in Japan, the Americas, and EMEA territories.
