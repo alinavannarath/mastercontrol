@@ -1,0 +1,220 @@
+---
+title: "EDA"
+author: "Charlotte Wang"
+date: "2026-02-18"
+output: 
+  html_document: 
+    toc: true
+    number_sections: true
+---
+
+# Project Goal
+
+The goal of this project is to identify accounts, industries, and company characteristics with a higher likelihood of converting for the Mx product, as this would increase sales and create a more efficient market-targeting strategy. MasterControl’s Manufacturing Solutions product (Mx) is significantly underperforming in comparison to its Quality Solutions product (Qx) and this project will aim to generate a healthier sales pipeline, discover potential cross sell opportunities, and provide a more comprehensive understanding of its customer base.
+
+The purpose of this EDA notebook is to explore the data provided to further analyze MasterControl's customer base and identify Mx targeting strategies that
+improve its current conversion rate baseline (12.7%), and bridge the 55% (7.0 percentage points)performance gap between Qx and Mx.
+
+# Questions
+
+Questions about that data that is being explored include:
+- What data types are in the data?
+- Are there missing values?
+- What are the different industry types? 
+- Do any of those industries have higher conversion rates?
+- Are there certain features that are more common in clients who convert?
+- Is there overlap between industries that convert for Mx v.s. Qx?
+
+# Data Description
+
+The data for this project includes:
+- **QAL Performance for MSBA.csv** which shows MasterControl's data for QAL performance.
+
+```{r Packages and Data Import}
+# Packages
+suppressMessages(suppressWarnings({
+library(tidyverse )
+library(caret)
+library(RWeka)
+library(dplyr)
+library(knitr)
+library(lubridate)
+library(readr)
+library(rpart)
+library(rpact)
+library(dplyr)
+library(VennDiagram)
+library(ggVennDiagram)
+library(patchwork)
+library(ggplot2)}))
+
+# Import Data
+QAL_Perform <- read_csv("QAL Performance for MSBA.csv")
+```
+
+# Examine Data and Clean Data
+```{r Data Examination}
+# Quick Look
+QAL_Perform |>str()
+QAL_Perform |> summary()
+
+# Check for Missing Values
+sort(colSums(is.na(QAL_Perform)))
+
+# Drop Columns that are more than 40% Null
+drop_NA_cols <- function(df, threshold = 0.4) {
+  na_ratio <- colMeans(is.na(df))
+  keep_cols <- names(na_ratio[na_ratio <= threshold])
+  df[, keep_cols, drop = FALSE]}
+QAL_Perform_clean <- drop_NA_cols(QAL_Perform, threshold = 0.4)
+
+# View
+sort(colSums(is.na(QAL_Perform_clean)))
+```
+
+# Discussion of Missing Data
+There is a large amount of missing data in the dataset provided. I believe that columns with a majority of missing values should be dropped from the data as they provide little information and may even add noise to the data. By focusing on columns that have more information we can have more accurate results and reduce unnecessary noise. 
+
+# Factor Cleaned Data
+```{r Factor}
+QAL_Perform_clean <- QAL_Perform_clean |>
+  mutate(across(where(is.character), as.factor))
+QAL_Perform_clean
+```
+# Target Variable 
+```{r Conversion Variable}
+# Create Logical Variable
+QAL_Perform_clean <- QAL_Perform_clean |>
+  mutate(converted = next_stage__c %in% c("SQL", "SQO", "Won"))
+
+# Overall Conversion Rate
+ov_conv_rate <- mean(QAL_Perform_clean$converted, na.rm = TRUE)
+ov_conv_rate
+```
+
+# Mx Subset
+```{r}
+Mx <- QAL_Perform_clean |>
+  filter(solution_rollup == "Mx")
+
+Mx_base <-mean(Mx$converted, na.rm = TRUE)
+Mx_base
+```
+
+# Mx Conversion by Industry
+```{r }
+# Barplot
+Mx |>
+  group_by(`acct target industry`) |>
+  summarise(conv_rate = mean(converted, na.rm = TRUE)) |>
+  ggplot(aes(x = reorder(`acct target industry`, conv_rate),
+             y = conv_rate)) +
+  geom_col() +
+  coord_flip() +
+  labs(title = "Mx Conversion Rate by Industry",
+       x = "Industry",
+       y = "Conversion Rate")
+```
+It can be seen from the barplot of Conversion Rate by Industry that the industry with the highest Mx conversion rate (other than NA's) is Blood and Biologics, followed by Medical Devices and Pharma & BioTech. 
+
+# Scatter Plot of Mx Conversion
+```{r Mx Conversion by Industry}
+Mx |>
+  group_by(`acct target industry`) |>
+  summarise(
+    conv_rate = mean(converted, na.rm = TRUE),
+    n_leads = n()) |>
+  ggplot(aes(x = n_leads, y = conv_rate)) +
+  geom_point() +
+  geom_text(aes(label = `acct target industry`),
+            hjust = 0, nudge_x = 5, size = 3) +
+  labs(title = "Mx Conversion vs Industry Volume",
+       x = "Number of Leads",
+       y = "Conversion Rate")
+```
+Shown in this scatterplot, we can see that Pharm has the most leads but a lower conversion rate while Blood & Biologics have much less leads but a much higher conversion rate.
+
+# Scatter Plot of Qx and Mx Conversion
+```{r Qx v.s. Mx Conversion by Industry}
+# Conversion
+conv_compare <- QAL_Perform_clean |>
+  filter(solution_rollup %in% c("Mx", "Qx")) |>
+  group_by(solution_rollup, `acct target industry`) |>
+  summarise(
+    conv_rate = mean(converted, na.rm = TRUE),
+    n_leads = n(),
+    .groups = "drop"
+  ) |>
+  select(solution_rollup, `acct target industry`, conv_rate) |>
+  pivot_wider(
+    names_from = solution_rollup,
+    values_from = conv_rate)
+
+# Scatterplot
+ggplot(conv_compare, aes(x = Qx, y = Mx)) +
+  geom_point() +
+  geom_abline(slope = 1, intercept = 0, linetype = "dashed") +
+  geom_text(aes(label = `acct target industry`),
+            hjust = 0, nudge_x = 0.005, size = 3) +
+  labs(
+    title = "Industry Conversion: Qx vs Mx",
+    x = "Qx Conversion Rate",
+    y = "Mx Conversion Rate")
+```
+While we previously had knowledge that Mx was underperforming in comparison to Qx, this scatterplot shows us each industry's position in conversion compared to Qx. 
+
+# Analysis Venn Diagram Mx and Qx
+
+```{r }
+# Industries with Mx conversions
+mx_industries <- QAL_Perform_clean |>
+  filter(solution_rollup == "Mx", converted == TRUE) |>
+  pull(`acct target industry`) |>
+  unique()
+
+# Industries with Qx conversions
+qx_industries <- QAL_Perform_clean |>
+  filter(solution_rollup == "Qx", converted == TRUE) |>
+  pull(`acct target industry`) |>
+  unique()
+
+# Industry List
+industry_list <- list(
+  Mx = mx_industries,
+  Qx = qx_industries)
+
+ggVennDiagram(industry_list) +
+  labs(title = "Overlap of Industries with Conversions: Mx vs Qx")
+
+# Overlap Values
+intersect(mx_industries, qx_industries)
+```
+Looking at the Venn Diagram of Overlapping Industries with Conversions to Mx vs Qx, we can see that all industries have some overlap between converting to Qx and Mx. 
+
+# Results
+The first step of the EDA was cleaning the data, there were columns with large amounts of NA's that had to be handled before analysis. By removing columns that had more than 40% nulls, columns acct manufacturing model, and acct primary site function were removed. contact/lead title still had a large amount of NA's but was kept for the analysis. 
+
+To explore the data, I used a barplot and scatterplot to analyze the Mx conversion rate by industry. On the plots, it can be seen that Blood & Biologics have the highest conversion rate that is identifiable, followed by Medical Devices and then Pharma & Biotech. NA's made up a large part of the conversion rate by industry meaning that some industries were not identified. 
+
+Then, I used a scatterplot and a venn diagram to compare the conversion rates of the Mx and Qx products by industry to see if particular industries had a large amount of overlap between the two products. There was no specific industry that only converted to Mx or only converted to Qx, all industries had some conversion to both products. Based on the scatterplot, all Mx conversions laid below the line in comparison to the Qx product, meaning that they were all underperforming. 
+
+# AI Usage Log
+
+## My drop 40% null code was not dropping the columns even though the values are 6877 null out of 16815 and 6875 out of 16815, this is the code: drop_NA_cols <- function(df, threshold = 0.4) { na_ratio <- colMeans(is.na(df)) keep_cols <- names(na_ratio[na_ratio <= threshold]) df[, keep_cols, drop = FALSE]} QAL_Perform_clean <- drop_NA_cols(QAL_Perform, threshold = 0.4)
+output: 
+Step 1: Verify the 40% threshold numerically
+Step 2: Why your function didn’t drop those two columns
+  Because your function uses:
+  keep_cols <- names(na_ratio[na_ratio <= threshold])
+  This compares:
+  na_ratio = colMeans(is.na(df))
+  which produces proportions (0–1), not counts.
+Let’s calculate:
+6877 / 16815 = 0.409
+6875 / 16815 = 0.409
+Step 3 Run this:
+ncol(QAL_Perform)
+ncol(QAL_Perform_clean)
+Step 4: Confirm which columns remain
+names(QAL_Perform_clean)
+
