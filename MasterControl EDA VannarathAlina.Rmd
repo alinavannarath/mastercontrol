@@ -305,8 +305,104 @@ master_clean |>
 
 Mx products predominately show successes in Japan and the Americas, with lower presence in EMEA and APAC/Oceania markets. 
 
+Gaurav Mishra
+
+# Conversion by Marketing Channel
+# Best performing channels --> highest quality leads 
+- Direct/Inbound
+- SEP
+- Online Ads
+
+```{r}
+df_clean %>%
+  group_by(last_tactic_campaign_channel) %>%
+  summarise(
+    total_leads = n(),
+    sqls = sum(next_stage_c == "SQL"),
+    conversion_rate = sqls / total_leads
+  ) %>%
+  arrange(desc(conversion_rate))
+```
+
+# Conversion by industry
+
+# Highest SQL Conversion Rate
+- Blood & biologics
+- Medical devices
+- Pharma & BioTech 
+
+```{r}
+df_clean %>%
+  group_by(acct_target_industry) %>%
+  summarise(
+    total_leads = n(),
+    sqls = sum(next_stage_c == "SQL"),
+    conversion_rate = sqls / total_leads
+  ) %>%
+  arrange(desc(conversion_rate))
+
+```
+
+# Conversion by Account Tier 
+- Small accounts convert best, medium, then large
+
+```{r}
+df_clean %>%
+  group_by(acct_tier_rollup) %>%
+  summarise(
+    total_leads = n(),
+    sqls = sum(next_stage_c == "SQL"),
+    conversion_rate = sqls / total_leads
+  ) %>%
+  arrange(desc(conversion_rate))
+
+```
+
+# Industry x Tier
+```{r}
+df_clean %>%
+  group_by(acct_target_industry, acct_tier_rollup) %>%
+  summarise(
+    total_leads = n(),
+    sqls = sum(next_stage_c == "SQL"),
+    conversion_rate = sqls / total_leads,
+    .groups = "drop"
+  ) %>%
+  arrange(desc(conversion_rate))
+
+```
+# Heatmap
+```{r}
+library(scales)
+
+heat_data <- df_clean %>%
+  group_by(acct_target_industry, acct_tier_rollup) %>%
+  summarise(
+    conversion_rate = mean(next_stage_c == "SQL"),
+    .groups = "drop"
+  )
+
+ggplot(heat_data, 
+       aes(acct_tier_rollup, acct_target_industry, fill = conversion_rate)) +
+  geom_tile() +
+  scale_fill_gradient(
+    low = "white",
+    high = "steelblue",
+    labels = scales::percent_format()
+  ) +
+  labs(
+    title = "Conversion Rate Heatmap",
+    x = "Account Tier",
+    y = "Industry",
+    fill = "Conversion"
+  ) +
+  theme_minimal()
+```
+
 # Results
 
 Our findings show that Mx product successes are most often achieved when the contact lead titles are at the executive or manager level within medical device manufacturing and active pharma site functions. The target industries for these customers are pharma and biotech, non-life science, and medical devices. Mx's success rates are pretty stagnant in 2024 and 2025, with slightly lower performance in 2025. Lastly, the Mx product is most successful in Japan, the Americas, and EMEA territories.
+
+Segment-level interaction analysis shows that small-tier companies outperform medium and large accounts across several industries, particularly within core life sciences segments. This pattern implies that prioritizing smaller and mid-market firms may drive higher pipeline efficiency than focusing heavily on enterprise accounts.
 
 Although our EDA highlights key trends within the data, there is still a substantial portion where there are missing/unknown values. This limits the insights we can draw from this and we will have to take this in consideration as we move forward into the modeling part of our project. 
