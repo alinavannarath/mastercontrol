@@ -16,6 +16,16 @@ Conversion predictions will be generated using a classification model. The model
 
 The purpose of this EDA notebook is to explore the relationships between different variables in the data. We will explore questions like what are the common characteristics of contacts/companies that are best prospects for Mx and how they differ from Qx products.
 
+# Questions
+
+Questions about that data that is being explored include:
+- What data types are in the data?
+- Are there missing values?
+- What are the different industry types? 
+- Do any of those industries have higher conversion rates?
+- Are there certain features that are more common in clients who convert?
+- Is there overlap between industries that convert for Mx v.s. Qx?
+
 # Description of the data
 
 ```{r explore the data}
@@ -397,6 +407,34 @@ ggplot(heat_data,
     fill = "Conversion"
   ) +
   theme_minimal()
+```
+
+# Scatter Plot of Qx and Mx Conversion
+```{r Qx v.s. Mx Conversion by Industry}
+# Conversion
+conv_compare <- QAL_Perform_clean |>
+  filter(solution_rollup %in% c("Mx", "Qx")) |>
+  group_by(solution_rollup, `acct target industry`) |>
+  summarise(
+    conv_rate = mean(converted, na.rm = TRUE),
+    n_leads = n(),
+    .groups = "drop"
+  ) |>
+  select(solution_rollup, `acct target industry`, conv_rate) |>
+  pivot_wider(
+    names_from = solution_rollup,
+    values_from = conv_rate)
+
+# Scatterplot
+ggplot(conv_compare, aes(x = Qx, y = Mx)) +
+  geom_point() +
+  geom_abline(slope = 1, intercept = 0, linetype = "dashed") +
+  geom_text(aes(label = `acct target industry`),
+            hjust = 0, nudge_x = 0.005, size = 3) +
+  labs(
+    title = "Industry Conversion: Qx vs Mx",
+    x = "Qx Conversion Rate",
+    y = "Mx Conversion Rate")
 ```
 
 # Results
