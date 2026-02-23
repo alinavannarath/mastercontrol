@@ -436,6 +436,32 @@ ggplot(conv_compare, aes(x = Qx, y = Mx)) +
     x = "Qx Conversion Rate",
     y = "Mx Conversion Rate")
 ```
+# Analysis Venn Diagram Mx and Qx
+
+```{r }
+# Industries with Mx conversions
+mx_industries <- QAL_Perform_clean |>
+  filter(solution_rollup == "Mx", converted == TRUE) |>
+  pull(`acct target industry`) |>
+  unique()
+
+# Industries with Qx conversions
+qx_industries <- QAL_Perform_clean |>
+  filter(solution_rollup == "Qx", converted == TRUE) |>
+  pull(`acct target industry`) |>
+  unique()
+
+# Industry List
+industry_list <- list(
+  Mx = mx_industries,
+  Qx = qx_industries)
+
+ggVennDiagram(industry_list) +
+  labs(title = "Overlap of Industries with Conversions: Mx vs Qx")
+
+# Overlap Values
+intersect(mx_industries, qx_industries)
+```
 
 # Results
 
