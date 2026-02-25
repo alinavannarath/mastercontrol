@@ -1,2 +1,2 @@
 # mastercontrol
-IS 6813 Capstone Project Spring 2026
+Group 2 IS 6813 Capstone Project Spring 2026
