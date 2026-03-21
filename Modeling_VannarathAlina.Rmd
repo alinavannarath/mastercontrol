@@ -1,0 +1,327 @@
+---
+title: "Modeling_VannarathAlina"
+output: 
+  html_document:
+    number_sections: yes
+    toc: yes
+editor_options: 
+  chunk_output_type: inline
+---
+
+# Introduction
+The project goal is to provide MasterControl with a clear, actionable recommendation that describes which account types and job titles convert the best for the Mx product, how this differs from the Qx's optimal profile, and the expected impact. We must analyze the relationship between the predictor variables in the sales leads dataset and identify drivers that represent Mx's target customers.
+
+The purpose of this modeling notebook is to fit various models to the dataset that will identify predictors that drives conversion for MasterControl's Mx product.
+
+# Data preparation
+
+## Loading packages and importing data
+```{r}
+
+suppressMessages(suppressWarnings({
+library(tidyverse)
+library(tidymodels)
+library(caret)
+library(tidyr)
+library(pROC)
+library(ranger)}))
+
+master <- read.csv("master_clean.csv")
+
+```
+
+## Factoring variables and removing redundancies
+
+```{r}
+
+# Removing QAL.id and contact.lead.id, and X
+master <- master |>
+  select(-QAL.ID, -contact.lead.id, -X, -qal.cohort.date, -solution)
+
+# Removing redundant variables
+master <- master |>
+  select(-month, -acct.primary.site.function, -contact.lead.title, -next_stage__c)
+
+# Factor success
+master <- master |>
+  mutate(
+    success = factor(success_binary, levels = c(0,1), labels = c("No", "Yes"))
+  )
+
+# Remove success_binary
+master <- master |>
+  select(-success_binary)
+
+# Factoring all variables
+master$acct.manufacturing.model <- as.factor(master$acct.manufacturing.model)
+master$acct.target.industry <- as.factor(master$acct.target.industry)
+master$Priority <- as.factor(master$Priority)
+master$acct.territory.rollup <- as.factor(master$acct.territory.rollup)
+master$acct.tier.rollup <- as.factor(master$acct.tier.rollup)
+master$solution <- as.factor(master$solution)
+master$solution_rollup <- as.factor(master$solution_rollup)
+master$last.tactic.campaign.channel <- as.factor(master$last.tactic.campaign.channel)
+master$title_group <- as.factor(master$title_group)
+master$site_function <- as.factor(master$site_function)
+
+```
+
+# Modeling process
+
+First, a simple logistic regression model will be conducted on all 16,060 sales lead records from MasterControl's dataset which spans across both Mx and Qx product lines. Since we are focusing on improving Mx leads, the dataset was partitioned by product line, which divided the dataset into 4,040 Mx leads and 12,020 Qx leads. A separate logistic regression model was done for each product line, as well as a random forest model.
+
+Integer class weights and downsampling was utilized to address the class imbalance in the dataset. 
+
+Model performance was estimated using repeated 10-fold cross-validation with 3 repetitions. 
+
+## Logistic Regression for Mx and Qx
+
+```{r}
+
+# Correcting for class imbalance
+n_neg <- sum(master$success == "No")
+n_pos <- sum(master$success == "Yes")
+weight_ratio <- round(n_neg / n_pos)
+weights <- ifelse(master$success == "Yes", weight_ratio, 1)
+
+# 10-fold CV control
+ctrl <- trainControl(
+  method = "repeatedcv",
+  number = 10,
+  repeats = 3,
+  classProbs = TRUE,
+  summaryFunction = twoClassSummary,
+  savePredictions = "final"
+)
+
+# Train
+set.seed(123)
+model_cv <- train(
+  success ~ .,
+  data = master,
+  method = "glm",
+  family = "binomial",
+  weights = weights,
+  metric = "ROC",
+  trControl = ctrl
+)
+
+# Results
+print(model_cv)
+summary(model_cv$finalModel)
+
+```
+
+Priority is the strongest predictor which isn't surprising. P1 - Contact Us and P1 - Website Pricing are the strongest positive signals (+0.94, +0.97).
+
+External Demand Gen is the worst channel (-2.28), Email and Events are also strongly negative (-1.26).
+SEO is the least penalized (-0.10), but not significant. This would be the best one out of all the channels.
+
+Other Manufacturing is the strongest positive segment (+0.37) and significant (< 0.001). Non-manufacturing is the only negative segment (-0.28).
+
+VP/Head is the best title overall (+1.67) but this is driven by Qx. This coefficient reflects across both products.
+
+## Logistic Regression for Mx Only
+
+```{r}
+# Separate only Mx products and get rid of the solution in the dataset
+df_mx <- master |> 
+  filter(solution_rollup == "Mx") |>
+  select(-solution_rollup, -solution)
+
+# Collapses rare factor levels into an "Other" category so the model can converge
+df_mx <- df_mx |>
+  mutate(
+    acct.manufacturing.model = fct_lump_min(acct.manufacturing.model, min = 30, other_level = "Other"),
+    acct.territory.rollup = fct_lump_min(acct.territory.rollup, min = 30, other_level = "Other"),
+    last.tactic.campaign.channel = fct_lump_min(last.tactic.campaign.channel, min = 30, other_level = "Other"),
+    acct.target.industry = fct_lump_min(acct.target.industry, min = 30, other_level = "Other"),
+    Priority = fct_lump_min(Priority, min = 30, other_level = "Other"),
+    title_group = fct_lump_min(title_group, min = 30, other_level = "Other"),
+  )
+
+# Correcting for class imbalance
+weight_ratio_mx <- round(sum(df_mx$success == "No") / sum(df_mx$success == "Yes"))
+weights_mx <- ifelse(df_mx$success == "Yes", weight_ratio_mx, 1)
+
+# Train
+mx_model <- train(
+  success ~ .,
+  data = df_mx,
+  method = "glm",
+  family = "binomial",
+  weights = weights_mx,
+  metric = "ROC",
+  trControl = ctrl
+)
+
+# Results
+print(mx_model)
+summary(mx_model$finalModel)
+
+```
+
+## Logistic Regression for Qx Only
+
+```{r}
+
+# Separate only Qx products and get rid of solution in the dataset
+df_qx <- master |> 
+  filter(solution_rollup == "Qx") |>
+  select(-solution_rollup, -solution)
+
+# Collapses rare factor levels so the model can converge
+df_qx <- df_qx |>
+  mutate (
+    acct.manufacturing.model = fct_lump_min(acct.manufacturing.model, min = 30, other_level = "Other"),
+    acct.target.industry = fct_lump_min(acct.target.industry, min = 30, other_level = "Other"),
+    Priority = fct_lump_min(Priority, min = 30, other_level = "Other"),
+    acct.territory.rollup = fct_lump_min(acct.territory.rollup, min = 30, other_level = "Other"),
+    acct.tier.rollup = fct_lump_min(acct.tier.rollup, min = 30, other_level = "Other"),
+    last.tactic.campaign.channel = fct_lump_min(last.tactic.campaign.channel, min = 30, other_level = "Other"),
+    title_group = fct_lump_min(title_group, min = 30, other_level = "Other")
+)
+
+# Correcting for class imbalance
+weight_ratio_qx <- round(sum(df_qx$success == "No") / sum(df_qx$success == "Yes"))
+weights_qx <- ifelse(df_qx$success == "Yes", weight_ratio_qx, 1)
+
+# Train
+qx_model <- train(
+  success ~ .,
+  data = df_qx,
+  method = "glm",
+  family = "binomial",
+  weights = weights_qx,
+  metric = "ROC",
+  trControl = ctrl
+)
+
+# Results
+print(qx_model)
+summary(qx_model$finalModel)
+
+```
+
+## Random Forest for Mx Only
+
+```{r}
+
+# Correcting for class imbalance by downsampling 
+ctrl_down <- trainControl(
+  method = "repeatedcv",
+  number = 10,
+  repeats = 3,
+  classProbs = TRUE,
+  summaryFunction = twoClassSummary,
+  savePredictions = "final",
+  sampling = "down"
+)
+
+# Train
+set.seed(123)
+mx_rf <- train(
+  success ~ .,
+  data = df_mx,
+  method = "ranger",
+  metric = "ROC",
+  trControl = ctrl_down,
+  tuneGrid = expand.grid(
+    mtry = c(2, 3, 5, 7),
+    splitrule = "gini",
+    min.node.size = c(5, 10, 20, 50)
+  ),
+  importance = "impurity"
+)
+
+# Results
+print(mx_rf)
+
+```
+
+## Random Forest for Qx Only
+
+```{r}
+
+# Train
+set.seed(123)
+qx_rf <- train(
+  success ~ .,
+  data = df_qx,
+  method = "ranger",
+  metric = "ROC",
+  trControl = ctrl_down,
+  tuneGrid = expand.grid(
+    mtry = c(2, 3, 5, 7),
+    splitrule = "gini",
+    min.node.size = c(5, 10, 20, 50)
+  ),
+  importance = "impurity"
+)
+
+# Results
+print(qx_rf)
+
+```
+
+# Model performance
+
+The AUC for logistic regression and random forest models performed very similarly.
+
+- Logistic Regression Mx AUC: 0.820
+- Random Forest Mx AUC: 0.823
+
+- Logistic Regression Qx AUC: 0.832
+- Random Forest Qx AUC: 0.839
+
+Since AUC did not improve substantially from logistic regression to random forest, we will stick with the logistic regression model. An AUC improvement of roughly 0.003 means that we would only gain about 3 more leads per 1,000 which isn't practical. Also, since both models performed similarly this means that the logistic regression model extracted most of the available signal from the predictors. A third model is unlikely to change our recommendations.
+
+```{r}
+
+library(vip)
+
+# Logistic regression coefficient for site_function
+tidy(mx_model$finalModel) |>
+  filter(str_detect(term, "site_function")) |>
+  mutate(odds_ratio = exp(estimate)) |>
+  select(term, estimate, odds_ratio, p.value) |>
+  arrange(desc(estimate))
+
+levels(df_mx$site_function)
+
+```
+
+Non-Manufacturing is the only statistically significant site function, and it's dramatically negative. It makes sense that a manufacturing product should not be targeting non-manufacturing site functions.
+
+No other account is strongly positive that is statistically significant. 
+
+```{r}
+
+# Conversion rate by title within each site_function
+df_mx |>
+  group_by(site_function, title_group) |>
+  summarise(
+    n    = n(),
+    rate = round(mean(success == "Yes"), 3),
+    .groups = "drop"
+  ) |>
+  filter(n >= 20) |>
+  arrange(site_function, desc(rate)) |>
+  print(n = 40)
+
+```
+
+Medical Device Manufacturing has the most reliable title signals for Mx. Technical, Manager, and Executive all show both high model scores and high actual rates. Unlike Qx where VP and Head-level contacts are the strongest converters, Mx performs best with operational and mid-level contacts.
+
+# Results
+
+The analysis used 16,060 MasterControl sales leads split into Mx and Qx datasets (4, 040 and 12,020, respectively). All categorical predictors were factored and rare levels under 30 observations were collapse in an "Other" category to prevent convergence failures. Class imbalance was addressed by doing class weights for the logistic regression models and downsampling for the random forest models.
+
+The logistic regression models and random forest models outputted similar AUC scores, so we went with the logistic regression model due to better interpretability.
+
+Key findings for the Mx logistic regression coefficients
+- Priority 2 leads had the highest negative signal (-1.47), meaning that it should be deprioritize and instead focus on Website Pricing (+2.03) and Contact Us (+0.79) which have significantly higher odds of converting.
+- External Demand Gen (-1.95), Email (-1.08), and Events (-1.07) are all strongly negative and statistically significant. MasterControl may be spending too heavily on channels that underperform for Mx.
+- No account type is statistically significant in the Mx model besides non-manufacturing which is strongly negative (-1.38). 
+- Medium (+0.32) and small (+0.34) account tiers convert significantly better than large accounts. Mx may be better positioned as a mid-market product than an enterprise solution.
+- Targeting manager and executive titles within the medical device manufacturing sector could improve Mx's conversion rate since they both show high model scores.
