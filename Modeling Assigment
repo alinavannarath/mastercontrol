@@ -27,7 +27,8 @@ library(lightgbm)
 library(grf)
 library(forcats)
 library(pROC)
-library(ranger)}))
+library(ranger)
+library(rpart.plot)}))
 
 # Import Data
 QAL_Perform <- read_csv("Mastercontrol QAL Performance.csv")
@@ -262,7 +263,7 @@ print(func_summary)
 Based on the above conversion rates, Blood and Biologics and Medical Devices have the highest Mx Conversion rates (17.0% and 16.3%) in terms of Industry. When split by manufacturing model, Consumer Packaged goods had the best Mx conversion rate (27%). When split by Site Function, Radio pharmaceuticals had the highest Mx Conversion Rate (32.4%). When split by territory, Japan (23.1%) and the Americas (15.0%) h ad the best conversion rates. In Priority split, the conversion rates that were highest were Website Pricing (60%), Discount Offer (50%), Video Demo (31.1%), and Contact Us (30.1%). In seniority, the C-Level (19.6%), VP (17.9%), and Senior/Lead (16.0%) had the best conversion rate. MasterControl also tended to do better with smaller companies and with channels SEO (27.2%), Direct/Inbound (24.7%), and Events (21.9%).
 
 # Mx Logistic Regression
-```{r Modeling}
+```{r Logistic Regression}
 # CV control
 cv_control <- trainControl(
   method          = "cv",
@@ -311,7 +312,7 @@ Mx_logit
 ```
 
 # Mx Random Forest
-```{r Modeling}
+```{r Random Forest}
 # Random Forest Model
 Mx_rf <- train(
   progressed ~ 
@@ -335,7 +336,7 @@ Mx_rf
 ```
 
 # Gradient Boosted Model
-```{r Modeling}
+```{r Gradient Boosted Model}
 # GBM
 Mx_gbm <- train(
   progressed ~ 
@@ -358,6 +359,116 @@ Mx_gbm <- train(
 Mx_gbm
 ```
 
-# Results
+# Alina's Qx Random Forest
+```{r Qx Random Forest}
+# RF
+Qx_Model <- QAL_Model |>
+  filter(solution_rollup == "Qx") |>
+  mutate(progressed = droplevels(progressed))
+set.seed(123)
+train_index_qx <- createDataPartition(Qx_Model$progressed, p = 0.8, list = FALSE)
+Qx_train <- Qx_Model[train_index_qx, ]
+Qx_test  <- Qx_Model[-train_index_qx, ]
 
+cv_control_down <- trainControl(
+  method          = "repeatedcv",
+  number          = 10,
+  repeats         = 3,
+  classProbs      = TRUE,
+  summaryFunction = twoClassSummary,
+  savePredictions = TRUE,
+  sampling        = "down"
+)
+
+# Train
+Qx_rf <- train(
+  progressed ~ 
+    `acct target industry` +
+    `acct manufacturing model` +
+    `acct tier rollup` +
+    `acct territory rollup` +
+    Priority +
+    `last tactic campaign channel` +
+    seniority +
+    func_area +
+    cohort_year +
+    cohort_quarter,
+  data      = Qx_train,
+  method    = "ranger",
+  metric    = "ROC",
+  trControl = cv_control_down,
+  tuneGrid  = expand.grid(
+    mtry           = c(2, 3, 5, 7),
+    splitrule      = "gini",
+    min.node.size  = c(5, 10, 20, 50)
+  ),
+  importance = "impurity"
+)
+print(Qx_rf)
+```
+
+# Alina's Qx Logistic Regression
+```{r Qx Logistic Regression}
+Qx_logit <- train(
+  progressed ~ 
+    `acct target industry` +
+    `acct manufacturing model` +
+    `acct tier rollup` +
+    `acct territory rollup` +
+    Priority +
+    `last tactic campaign channel` +
+    seniority +
+    func_area +
+    cohort_year +
+    cohort_quarter,
+  data      = Qx_train,
+  method    = "glm",
+  family    = "binomial",
+  trControl = cv_control,
+  metric    = "ROC"
+)
+
+Qx_logit
+```
+
+# Leilanie's Decision Tree
+```{r Decision Tree}
+set.seed(123)
+Mx_dt <- train(
+  progressed ~ 
+    `acct target industry` +
+    `acct manufacturing model` +
+    `acct tier rollup` +
+    `acct territory rollup` +
+    Priority +
+    `last tactic campaign channel` +
+    seniority +
+    func_area +
+    cohort_year +
+    cohort_quarter,
+  data       = Mx_train,
+  method     = "rpart",
+  trControl  = cv_control,
+  metric     = "ROC",
+  tuneLength = 10
+)
+
+Mx_dt
+plot(Mx_dt)
+
+# Plot
+rpart.plot(Mx_dt$finalModel, type = 4, extra = 101, under = TRUE,
+           cex = 0.7, main = "Decision Tree for Mx Conversion")
+
+# Evaluate on test
+dt_preds <- predict(Mx_dt, Mx_test)
+dt_probs <- predict(Mx_dt, Mx_test, type = "prob")[, "Yes"]
+
+confusionMatrix(dt_preds, Mx_test$progressed, positive = "Yes")
+roc(Mx_test$progressed, dt_probs, levels = c("No", "Yes")) |> auc()
+
+varImp(Mx_dt) |> plot(main = "Decision Tree: Variable Importance for Mx Conversion")
+```
+
+# Results
 The Gradient Boosted Tree for Mx had the best AUC of about 0.823 with the Logistic Regression for Mx also performing well at about 0.815. The Random Forest Model for Mx performed the worst with an AUC of about 0.797.
