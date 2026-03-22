@@ -1,15 +1,13 @@
 ---
 title: "Modeling Assignment"
-author: "Charlotte Wang, Alina Vannarath, Gaurav Mishra, Leilanie Coker"
 date: "2026-03-18"
 output: html_document
 ---
 
-# Project Goal
+# Introduction
 
-The goal of this project is to identify accounts, industries, and company characteristics with a higher likelihood of converting for the Mx product, as this would increase sales and create a more efficient market-targeting strategy. MasterControl’s Manufacturing Solutions product (Mx) is significantly underperforming in comparison to its Quality Solutions product (Qx) and this project will aim to generate a healthier sales pipeline, discover potential cross sell opportunities, and provide a more comprehensive understanding of its customer base.
-
-The purpose of this Modeling notebook is to explore the data provided to further analyze MasterControl's customer base and identify Mx targeting strategies that improve its current conversion rate baseline (12.7%), and bridge the 55% (7.0 percentage points)performance gap between Qx and Mx.
+The goal of this project is to identify accounts, industries, and company characteristics with a higher likelihood of converting for the Mx product in order to provide MasterControl with a clear and actionable recommendation that describes which account types and job titles convert the best for the Mx product, how this differs from the Qx's optimal profile, and the expected impact. We must analyze the relationship between the predictor variables in the sales leads dataset and identify drivers that represent Mx's target customers.
+The purpose of this Modeling notebook is to explore different models to analyze and identify predictors among MasterControl's customer base that improve its current conversion rate baseline, and bridge the performance gap between Qx and Mx. 
 
 # Packages and Data Import
 ```{r Packages and Data Import}
@@ -27,7 +25,9 @@ library(rpact)
 library(dplyr)
 library(lightgbm)
 library(grf)
-library(forcats)}))
+library(forcats)
+library(pROC)
+library(ranger)}))
 
 # Import Data
 QAL_Perform <- read_csv("Mastercontrol QAL Performance.csv")
