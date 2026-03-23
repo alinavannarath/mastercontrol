@@ -546,4 +546,4 @@ Key findings for the Mx logistic regression coefficients
 - Medium (+0.32) and small (+0.34) account tiers convert significantly better than large accounts. Mx may be better positioned as a mid-market product than an enterprise solution.
 - Targeting manager and executive titles within the medical device manufacturing sector could improve Mx's conversion rate since they both show high model scores.
 
-All parts of the notebook were worked on by all members of the group. 
+All parts of the notebook were worked on by all members of the group even if not explicitly written. 
